@@ -27,6 +27,22 @@ oid_rate = {'entCpuRate':['1.3.6.1.4.1.2011.10.2.6.1.1.1.1.6.43','1.3.6.1.4.1.20
             'entMemRate':['1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.43','1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.45','1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.47',
                           '1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.1343','1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.1345','1.3.6.1.4.1.2011.10.2.6.1.1.1.1.8.1347']}
 
+openning_parameter = True
+lastintime = time.time() - 1e3
+delay_time = 90
+def wechat_alarm(descript,ip,openning=False):
+    global lastintime
+    intime = time.time()
+    if openning and int(intime-lastintime)>=delay_time:
+        data = {'text': '告警信息', 'desp': '详细信息:'+descript+' ip:'+ip+' time:'+time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}
+        data = parse.urlencode(data).encode('utf-8')
+        req = request.Request(url, data=data)
+        page = request.urlopen(req).read()
+        page = page.decode('utf-8')
+        lastintime = intime
+    else:
+        pass
+
 
 def switchInfo():
     info = alarm('config2.ini')
@@ -58,7 +74,7 @@ def switchInfo():
                 alarmcpu = 5
                 eventname = "CPU阈值告警"
                 descript = "交换机CPU使用率超过%.2f%%"%cpulevel5
-                detect.save_eventlog(T, ip, eventname, eventtype, alarmcpu, descript
+                detect.save_eventlog(T, ip, eventname, eventtype, alarmcpu, descript)
                 data = {'text':'告警信息','desp':'详细信息:'+descript+' '+time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}
                 data = parse.urlencode(data).encode('utf-8')
                 req = request.Request(url,data=data)
@@ -302,6 +318,7 @@ def main():
     while True:
         switchInfo()
         eventlog(iplist)
+        token = -1
         for host in hosts:
             status = host.summary.overallStatus
             if status == 'red':
@@ -342,44 +359,47 @@ def main():
                 detect.save_eventlog(T, ip, eventname, eventtype, level, descript)
             '''
             for vm in host.vm:
+                token += 1
                 vm_status = vm.summary.overallStatus
                 if vm_status == 'red':
                     T = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    ip = vm.summary.config.name
+                    if vm.guest.ipAddress:
+                        ip = vm.guest.ipAddress
+                    else:
+                        ip = vm.summary.config.name
                     eventname = "虚拟机故障"
                     eventtype = 'VM_client'
                     level = 5
                     descript = "虚拟机中某些地方发生了一些故障"
                     detect.save_eventlog(T, ip, eventname, eventtype, level, descript)
-                    data = {'text': '告警信息', 'desp': '详细信息:'+descript+' '+time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}
-                    data = parse.urlencode(data).encode('utf-8')
-                    req = request.Request(url, data=data)
-                    page = request.urlopen(req).read()
-                    page = page.decode('utf-8')
+                    wechat_alarm(descript,ip,openning=openning_parameter)
+
                 elif vm_status == 'yellow':
                     T = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    ip = vm.summary.config.name
+                    if vm.guest.ipAddress:
+                        ip = vm.guest.ipAddress
+                    else:
+                        ip = vm.summary.config.name
                     eventname = "虚拟机处于危险"
                     eventtype = 'VM_client'
                     level = 4
                     descript = "虚拟机中某些地方可能发生了一些故障"
                     detect.save_eventlog(T, ip, eventname, eventtype, level, descript)
-                    data = {'text': '告警信息', 'desp': '详细信息:'+descript+' '+time.strftime('%Y-%m-%d %H:%M:%S',time.localtime(time.time()))}
-                    data = parse.urlencode(data).encode('utf-8')
-                    req = request.Request(url, data=data)
-                    page = request.urlopen(req).read()
-                    page = page.decode('utf-8')
+                    wechat_alarm(descript,ip,openning=openning_parameter)
                 #测试
-                '''
-                else:
+                elif token==0 or token == 1:
                     T = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    ip = vm.summary.config.name
+                    if vm.guest.ipAddress:
+                        ip = vm.guest.ipAddress
+                    else:
+                        ip = vm.summary.config.name
                     eventname = "虚拟机测试"
                     eventtype = 'VM_client'
                     level = 0
                     descript = "虚拟机测试"
                     detect.save_eventlog(T, ip, eventname, eventtype, level, descript)
-                '''
+                    wechat_alarm(descript,ip,openning=openning_parameter)
+
         info = alarm('config.ini')
         info.cfg_load()
         interval = int(info.cfg_dump('Time_interval')['interval'])
